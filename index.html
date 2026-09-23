@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weight & Steps Dashboard</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+body {
+  background: #111;
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+body.has-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.78);
+  z-index: -1;
+}
+
+#dashboard { padding-bottom: 40px; position: relative; z-index: 1; }
+
+/* ============== HEADER ============== */
+.header {
+  background: rgba(26,26,26,0.92);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #00b300;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(6px);
+}
+.header h2 { margin: 0; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+
+.settings-icon {
+  background: #333;
+  color: white;
+  border: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 19px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s;
+}
+.settings-icon:active { background: #00b300; }
+.header-right { width: 38px; }
+
+/* ============== DEVICE TABS ============== */
+.tabs {
+  display: flex;
+  overflow-x: auto;
+  background: rgba(26,26,26,0.92);
+  padding: 8px;
+  gap: 6px;
+  backdrop-filter: blur(6px);
+}
+.tabs:empty { display: none; }
+.tab {
+  padding: 8px 14px 8px 10px;
+  background: #333;
+  border-radius: 20px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab.active { background: #00b300; border-color: #00ff00; }
+.tab .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: red;
+  flex-shrink: 0;
+}
+.tab .dot.online { background: lime; }
+.tab .motor-icon { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* ============== DEVICE PANEL ============== */
+.panel { padding: 15px; }
+.panel h3 {
+  margin: 5px 0 15px;
+  color: #00d400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 17px;
+}
+.esp-line { margin-bottom: 15px; font-size: 15px; }
+
+.status {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  display: inline-block;
+  background: red;
+  vertical-align: middle;
+}
+
+/* ============== LIVE MONITORING ============== */
+.monitor-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #888;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  text-align: left;
+  margin: 22px 8px 10px;
+}
+
+.monitor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.monitor-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+.monitor-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: #555;
+  transition: background 0.25s;
+}
+.monitor-card.active {
+  background: rgba(0, 179, 0, 0.12);
+  border-color: rgba(0, 220, 80, 0.35);
+}
+.monitor-card.active::before { background: #00d400; }
+.monitor-card.wait::before { background: #666; }
+.monitor-card.alarm {
+  background: rgba(255, 60, 60, 0.15);
+  border-color: rgba(255, 60, 60, 0.45);
+  animation: alarmPulse 1s infinite;
+}
+.monitor-card.alarm::before { background: #ff3b3b; }
+@keyframes alarmPulse {
+  0%, 100% { background: rgba(255, 60, 60, 0.15); }
+  50% { background: rgba(255, 60, 60, 0.30); }
+}
+
+.monitor-icon {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #2a2a2a;
+  transition: all 0.25s;
+}
+.monitor-icon svg { width: 22px; height: 22px; }
+.monitor-card.active .monitor-icon { background: rgba(0, 212, 0, 0.18); color: #00e673; }
+.monitor-card.alarm .monitor-icon { background: rgba(255, 59, 59, 0.25); color: #ff5555; }
+.monitor-card.wait .monitor-icon { color: #888; }
+
+.monitor-body { flex: 1; min-width: 0; }
+.monitor-label {
+  font-size: 11px;
+  color: #888;
+  font-weight: bold;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.monitor-value {
+  font-size: 22px;
+  font-weight: bold;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.monitor-card.active .monitor-value { color: #33ff99; }
+.monitor-card.alarm .monitor-value { color: #ff6666; }
+.monitor-card.wait .monitor-value { color: #999; }
+
+/* ============== EMPTY STATE ============== */
+.empty-state { padding: 60px 20px; color: #888; }
+.empty-state .motor-big { width: 80px; height: 80px; opacity: 0.4; margin-bottom: 20px; }
+.empty-state p { font-size: 16px; margin: 10px 0; }
+.empty-state .add-btn {
+  margin-top: 20px;
+  padding: 12px 28px;
+  background: #00b300;
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* ============== SETTINGS MODAL ============== */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal.show { display: flex; }
+.modal-box {
+  background: #1e1e1e;
+  padding: 22px;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.modal-box h3 {
+  margin: 0 0 18px;
+  color: #00d400;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+}
+.modal-box h3 .close-x {
+  background: #333;
+  color: white;
+  border: none;
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #333;
+}
+.section-title {
+  color: #00d400;
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  display: block;
+}
+.modal-box label { display: block; font-size: 13px; margin: 10px 0 4px; color: #aaa; }
+.modal-box input[type="text"],
+.modal-box input[type="number"],
+.modal-box input[type="file"],
+.modal-box input[type="date"] {
+  width: 100%;
+  padding: 11px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: white;
+  font-size: 14px;
+}
+.modal-box input[type="file"] { padding: 8px; font-size: 13px; }
+.row { display: flex; gap: 10px; margin-top: 14px; }
+.row button {
+  flex: 1;
+  padding: 11px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  color: white;
+}
+.save-btn { background: #00b300; }
+.cancel-btn { background: #555; }
+.danger-btn {
+  background: #cc0000;
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.device-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #2a2a2a;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin: 8px 0;
+  font-size: 14px;
+}
+.device-list-item button {
+  background: #cc0000;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.empty-list { color: #666; font-size: 13px; padding: 10px 0; text-align: center; }
+
+/* ============== HISTORY ============== */
+.history-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.history-filters label {
+  font-size: 11px;
+  color: #888;
+  display: block;
+  margin-bottom: 4px;
+}
+.history-list {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background: #1a1a1a;
+}
+.history-list:empty::after {
+  content: "No history yet";
+  display: block;
+  padding: 24px;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+}
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 14px;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 14px;
+}
+.history-item:last-child { border-bottom: none; }
+.history-item .date { color: #ccc; font-weight: 600; font-size: 13px; }
+.history-item .steps-badge {
+  background: rgba(0, 212, 0, 0.15);
+  color: #00e673;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.export-btn {
+  width: 100%;
+  padding: 13px;
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: bold;
+  background: #ff5722;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.export-btn:hover { background: #e64a19; }
+.export-btn:active { transform: scale(0.97); }
+
+.alarm-hint {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+  display: block;
+}
+
+/* ============== TOAST ALARM ============== */
+.alarm-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-120px);
+  background: #cc0000;
+  color: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 15px;
+  box-shadow: 0 8px 30px rgba(204,0,0,0.5);
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.4s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.alarm-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  animation: alarmShake 0.5s;
+}
+@keyframes alarmShake {
+  0%, 100% { margin-left: 0; }
+  25% { margin-left: -8px; }
+  75% { margin-left: 8px; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- ALARM TOAST -->
+<div class="alarm-toast" id="alarmToast">
+  🚨 <span>Weight Exceeded!</span>
+</div>
+
+<!-- ================= DASHBOARD ================= -->
+<div id="dashboard">
+  <div class="header">
+    <button class="settings-icon" onclick="openSettings()" title="Settings">⚙️</button>
+    <h2>
+      <svg class="motor-icon" style="width:26px;height:26px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="8" stroke="#00d400" stroke-width="2"/>
+        <circle cx="12" cy="12" r="3" fill="#00d400"/>
+        <path d="M12 4 L12 1 M12 23 L12 20 M4 12 L1 12 M23 12 L20 12" stroke="#00d400" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Weight & Steps
+    </h2>
+    <div class="header-right"></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="panels"></div>
+</div>
+
+<!-- ================= SETTINGS MODAL ================= -->
+<div class="modal" id="settingsModal">
+  <div class="modal-box">
+    <h3>
+      ⚙️ Settings
+      <button class="close-x" onclick="closeSettings()">✕</button>
+    </h3>
+
+    <!-- ============ DEVICE MANAGEMENT ============ -->
+    <span class="section-title">📟 Device Management</span>
+    <label>Add Device by Unique ID</label>
+    <input type="text" id="newDeviceId" placeholder="e.g. device01" autocomplete="off">
+    <div class="row">
+      <button class="cancel-btn" onclick="closeSettings()">Cancel</button>
+      <button class="save-btn" onclick="addDevice()">Add Device</button>
+    </div>
+
+    <label style="margin-top:16px;">Saved Devices</label>
+    <div id="deviceList"></div>
+
+    <!-- ============ WEIGHT ALARM ============ -->
+    <div class="section">
+      <span class="section-title">🚨 Weight Alarm</span>
+      <label>Set Weight Threshold (kg)</label>
+      <input type="number" id="thresholdInput" step="0.01" min="0" placeholder="e.g. 2.5" value="2.0">
+      <span class="alarm-hint">If weight exceeds this value, phone alarm + ESP32 buzzer will turn ON.</span>
+      <div class="row">
+        <button class="save-btn" onclick="saveThreshold()">Save Threshold</button>
+      </div>
+    </div>
+
+    <!-- ============ HISTORY & EXPORT ============ -->
+    <div class="section">
+      <span class="section-title">📅 Steps History &amp; Export</span>
+      <label>Date Range</label>
+      <div class="history-filters">
+        <div>
+          <label>From</label>
+          <input type="date" id="fromDate">
+        </div>
+        <div>
+          <label>To</label>
+          <input type="date" id="toDate">
+        </div>
+      </div>
+      <div class="history-list" id="historyList"></div>
+      <button class="export-btn" id="exportBtn">📄 Export to PDF</button>
+    </div>
+
+    <!-- ============ BACKGROUND ============ -->
+    <div class="section">
+      <span class="section-title">🖼️ Background</span>
+      <label>Upload Custom Background Image</label>
+      <input type="file" id="bgUpload" accept="image/*" onchange="uploadBg(event)">
+      <button class="danger-btn" onclick="removeBg()">🗑️ Remove Background</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const STORAGE_KEY = "scale_devices";
+const BG_KEY      = "scale_bg";
+const THRESH_KEY  = "scale_thresholds";   // { deviceId: value }
+const HISTORY_KEY = "scale_history";
+const STORAGE_DAYS = 30;
+
+/* ================= STATE ================= */
+let devices = [];
+let deviceStates = {};
+let activeDevice = null;
+let client = null;
+let history = {};
+let thresholds = {};
+let currentDay = getTodayStr();
+let alarmActive = false;
+let audioCtx = null;
+
+/* ================= ICONS ================= */
+const MOTOR_SVG = (color, size = 16) => `
+  <svg class="motor-icon" style="width:${size}px;height:${size}px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="12" r="8" stroke="${color}" stroke-width="2"/>
+    <circle cx="12" cy="12" r="3" fill="${color}"/>
+    <path d="M12 4 L12 1 M12 23 L12 20 M4 12 L1 12 M23 12 L20 12" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+`;
+
+const ICON_WEIGHT = (color = "currentColor", size = 22) => `
+  <svg style="width:${size}px;height:${size}px;color:${color}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v3"/>
+    <path d="M5 21h14l-2-11H7L5 21z"/>
+    <circle cx="12" cy="14" r="3"/>
+  </svg>
+`;
+
+const ICON_STEPS = (color = "currentColor", size = 22) => `
+  <svg style="width:${size}px;height:${size}px;color:${color}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 20a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+    <path d="M15 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+  </svg>
+`;
+
+/* ================= DATE HELPERS ================= */
+function getTodayStr() {
+  const d = new Date();
+  return d.toISOString().split("T")[0];
+}
+function formatDate(dateStr) {
+  const [y, m, d] = dateStr.split("-");
+  return `${d}-${m}-${y}`;
+}
+
+/* ================= STORAGE ================= */
+function loadDevices() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  devices = raw ? JSON.parse(raw) : [];
+}
+function saveDevices() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(devices));
+}
+function loadThresholds() {
+  try {
+    thresholds = JSON.parse(localStorage.getItem(THRESH_KEY) || "{}");
+  } catch { thresholds = {}; }
+}
+function saveThresholds() {
+  localStorage.setItem(THRESH_KEY, JSON.stringify(thresholds));
+}
+function loadHistory() {
+  try {
+    history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "{}");
+  } catch { history = {}; }
+}
+function saveHistory() {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch (e) { console.error(e); }
+}
+function saveDailyRecord(deviceId, dateStr, stepsCount) {
+  if (!deviceId) return;
+  if (!history[deviceId]) history[deviceId] = {};
+  history[deviceId][dateStr] = stepsCount;
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - STORAGE_DAYS);
+  const cutoffStr = cutoff.toISOString().split("T")[0];
+  Object.keys(history[deviceId]).forEach(d => {
+    if (d < cutoffStr) delete history[deviceId][d];
+  });
+  saveHistory();
+}
+function getDeviceHistory(deviceId) {
+  return history[deviceId] || {};
+}
+
+/* ================= BACKGROUND ================= */
+function applyBg(dataUrl) {
+  if (dataUrl) {
+    document.body.style.backgroundImage = `url(${dataUrl})`;
+    document.body.classList.add("has-bg");
+  } else {
+    document.body.style.backgroundImage = "none";
+    document.body.classList.remove("has-bg");
+  }
+}
+function uploadBg(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) return alert("Image must be under 3MB");
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    try {
+      localStorage.setItem(BG_KEY, dataUrl);
+      applyBg(dataUrl);
+    } catch (err) { alert("Image too large"); }
+  };
+  reader.readAsDataURL(file);
+}
+function removeBg() {
+  localStorage.removeItem(BG_KEY);
+  applyBg(null);
+  document.getElementById("bgUpload").value = "";
+}
+
+/* ================= DEVICE MANAGEMENT ================= */
+function addDevice() {
+  const id = document.getElementById("newDeviceId").value.trim().toLowerCase();
+  if (!id) return alert("Enter a Unique ID");
+  if (!/^[a-z0-9_\-]+$/.test(id)) return alert("Only a-z, 0-9, _ , - allowed");
+  if (devices.includes(id)) return alert("This device already exists");
+
+  devices.push(id);
+  deviceStates[id] = { online: false, weight: null, steps: null, stepsBaseline: null };
+  if (thresholds[id] === undefined) thresholds[id] = 2.0;
+  saveDevices();
+  saveThresholds();
+  subscribeDevice(id);
+  document.getElementById("newDeviceId").value = "";
+  if (!activeDevice) activeDevice = id;
+
+  renderTabs();
+  renderPanels();
+  renderDeviceList();
+}
+function removeDevice(id) {
+  if (!confirm(`Remove device "${id}"?`)) return;
+  devices = devices.filter(d => d !== id);
+  delete deviceStates[id];
+  delete thresholds[id];
+  saveDevices();
+  saveThresholds();
+  if (activeDevice === id) activeDevice = devices[0] || null;
+  renderTabs();
+  renderPanels();
+  renderDeviceList();
+}
+function renderDeviceList() {
+  const list = document.getElementById("deviceList");
+  if (devices.length === 0) {
+    list.innerHTML = `<div class="empty-list">No devices added yet</div>`;
+    return;
+  }
+  list.innerHTML = devices.map(id => `
+    <div class="device-list-item">
+      <span>${id}</span>
+      <button onclick="removeDevice('${id}')">Delete</button>
+    </div>
+  `).join("");
+}
+
+/* ================= THRESHOLD ================= */
+function saveThreshold() {
+  if (!activeDevice) return alert("Select a device first");
+  const val = parseFloat(document.getElementById("thresholdInput").value);
+  if (isNaN(val) || val <= 0) return alert("Enter a valid threshold (kg)");
+
+  thresholds[activeDevice] = val;
+  saveThresholds();
+
+  // publish to ESP32
+  if (client && client.connected) {
+    client.publish(`${activeDevice}/threshold`, String(val), { retain: true });
+  }
+  alert(`Threshold set to ${val} kg for ${activeDevice}`);
+}
+
+/* ================= MQTT ================= */
+function initDashboard() {
+  loadDevices();
+  loadThresholds();
+  loadHistory();
+  devices.forEach(id => {
+    if (!deviceStates[id]) {
+      deviceStates[id] = { online: false, weight: null, steps: null, stepsBaseline: null };
+    }
+    if (thresholds[id] === undefined) thresholds[id] = 2.0;
+  });
+  activeDevice = devices[0] || null;
+  renderTabs();
+  renderPanels();
+  renderDeviceList();
+  connectMQTT();
+  startMidnightChecker();
+  initAudio();
+}
+
+function connectMQTT() {
+  client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt");
+  client.on("connect", () => {
+    devices.forEach(id => {
+      subscribeDevice(id);
+      // publish threshold on connect
+      if (thresholds[id] !== undefined) {
+        client.publish(`${id}/threshold`, String(thresholds[id]), { retain: true });
+      }
+    });
+  });
+  client.on("close", () => {
+    devices.forEach(id => {
+      if (!deviceStates[id]) return;
+      deviceStates[id].online = false;
+      deviceStates[id].weight = null;
+      deviceStates[id].steps = null;
+    });
+    renderTabs();
+    renderPanels();
+  });
+  client.on("message", (topic, message) => {
+    const msg = message.toString();
+    const parts = topic.split("/");
+    if (parts.length !== 2) return;
+    const devId = parts[0];
+    const channel = parts[1];
+    if (!deviceStates[devId]) return;
+
+    if (channel === "status") {
+      deviceStates[devId].online = (msg === "ONLINE");
+    } else if (channel === "weight") {
+      deviceStates[devId].weight = parseFloat(msg);
+      checkAlarm(devId);
+    } else if (channel === "steps") {
+      const raw = parseInt(msg);
+      if (deviceStates[devId].stepsBaseline === null) {
+        const savedToday = getDeviceHistory(devId)[getTodayStr()] || 0;
+        deviceStates[devId].stepsBaseline = raw - savedToday;
+      }
+      const todaySteps = Math.max(0, raw - deviceStates[devId].stepsBaseline);
+      deviceStates[devId].steps = todaySteps;
+      saveDailyRecord(devId, getTodayStr(), todaySteps);
+    }
+
+    renderTabs();
+    if (devId === activeDevice) renderPanels();
+  });
+}
+
+function subscribeDevice(id) {
+  if (!client || !client.connected) return;
+  ["status", "weight", "steps"].forEach(ch => client.subscribe(`${id}/${ch}`));
+}
+
+/* ================= ALARM ================= */
+function initAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch { /* ignore */ }
+}
+
+function playAlarmSound() {
+  if (!audioCtx) return;
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "square";
+  osc.frequency.value = 900;
+  gain.gain.value = 0.15;
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.4);
+}
+
+function checkAlarm(devId) {
+  const s = deviceStates[devId];
+  if (!s || s.weight === null) return;
+  const th = thresholds[devId] ?? 2.0;
+
+  if (s.weight > th) {
+    if (!alarmActive) {
+      alarmActive = true;
+      showAlarmToast(`🚨 ${devId} — Weight ${s.weight.toFixed(2)} kg exceeds ${th} kg!`);
+      playAlarmSound();
+      // repeat alarm sound every 2s while active
+      if (!window.__alarmInterval) {
+        window.__alarmInterval = setInterval(() => {
+          if (alarmActive) playAlarmSound();
+        }, 2000);
+      }
+    }
+  } else {
+    if (alarmActive) {
+      alarmActive = false;
+      hideAlarmToast();
+      if (window.__alarmInterval) {
+        clearInterval(window.__alarmInterval);
+        window.__alarmInterval = null;
+      }
+    }
+  }
+}
+
+function showAlarmToast(text) {
+  const el = document.getElementById("alarmToast");
+  el.querySelector("span").textContent = text;
+  el.classList.add("show");
+}
+function hideAlarmToast() {
+  document.getElementById("alarmToast").classList.remove("show");
+}
+
+/* ================= MIDNIGHT RESET ================= */
+function startMidnightChecker() {
+  setInterval(() => {
+    const today = getTodayStr();
+    if (today !== currentDay) {
+      devices.forEach(id => {
+        const s = deviceStates[id];
+        if (s && s.steps !== null) {
+          saveDailyRecord(id, currentDay, s.steps);
+        }
+        if (s) {
+          s.stepsBaseline = null;
+          s.steps = 0;
+        }
+      });
+      currentDay = today;
+      renderTabs();
+      renderPanels();
+    }
+  }, 30000);
+}
+
+/* ================= UI RENDER ================= */
+function renderTabs() {
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = devices.map(id => {
+    const online = deviceStates[id]?.online;
+    return `<div class="tab ${id === activeDevice ? 'active' : ''}" onclick="selectDevice('${id}')">
+      ${MOTOR_SVG("#00d400", 16)}
+      <span class="dot ${online ? 'online' : ''}"></span>${id}
+    </div>`;
+  }).join("");
+}
+function selectDevice(id) {
+  activeDevice = id;
+  renderTabs();
+  renderPanels();
+}
+
+function renderPanels() {
+  const panel = document.getElementById("panels");
+
+  if (!activeDevice || devices.length === 0) {
+    panel.innerHTML = `
+      <div class="panel empty-state">
+        ${MOTOR_SVG("#00d400", 80)}
+        <p>No devices added yet</p>
+        <p style="font-size:13px;color:#666">Add a Device ID from Settings ⚙️</p>
+        <button class="add-btn" onclick="openSettings()">+ Add Device</button>
+      </div>
+    `;
+    return;
+  }
+
+  const s = deviceStates[activeDevice];
+  const online = s.online;
+  const th = thresholds[activeDevice] ?? 2.0;
+  const isAlarm = online && s.weight !== null && s.weight > th;
+
+  // Weight display — KG with floating
+  let weightCls = "wait";
+  let weightText = "Device Not Connected";
+  if (online && s.weight !== null) {
+    if (isAlarm) {
+      weightCls = "alarm";
+      weightText = s.weight.toFixed(2) + " kg ⚠️";
+    } else {
+      weightCls = "active";
+      weightText = s.weight.toFixed(2) + " kg";
+    }
+  }
+
+  // Steps display — integer
+  let stepsCls = "wait";
+  let stepsText = "Device Not Connected";
+  if (online && s.steps !== null) {
+    stepsCls = "active";
+    stepsText = Math.round(s.steps) + " steps";
+  }
+
+  panel.innerHTML = `
+    <div class="panel">
+      <h3>${MOTOR_SVG("#00d400", 24)} Device: ${activeDevice}</h3>
+      <div class="esp-line">
+        ESP Status :
+        <span class="status" style="background:${online ? 'lime' : 'red'}"></span>
+      </div>
+
+      <div class="monitor-title">LIVE MONITORING</div>
+      <div class="monitor-list">
+        <div class="monitor-card ${weightCls}">
+          <div class="monitor-icon">${ICON_WEIGHT()}</div>
+          <div class="monitor-body">
+            <div class="monitor-label">Weight (Live)</div>
+            <div class="monitor-value">${weightText}</div>
+          </div>
+        </div>
+        <div class="monitor-card ${stepsCls}">
+          <div class="monitor-icon">${ICON_STEPS()}</div>
+          <div class="monitor-body">
+            <div class="monitor-label">Steps Today (12AM Reset)</div>
+            <div class="monitor-value">${stepsText}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // prefill threshold input
+  const ti = document.getElementById("thresholdInput");
+  if (ti) ti.value = th;
+
+  // set defaults for history filters if empty
+  const fromInput = document.getElementById("fromDate");
+  const toInput = document.getElementById("toDate");
+  if (fromInput && !fromInput.value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    fromInput.value = d.toISOString().split("T")[0];
+  }
+  if (toInput && !toInput.value) toInput.value = getTodayStr();
+
+  if (fromInput) fromInput.onchange = refreshHistoryList;
+  if (toInput) toInput.onchange = refreshHistoryList;
+
+  const exportBtn = document.getElementById("exportBtn");
+  if (exportBtn) exportBtn.onclick = exportPdf;
+
+  refreshHistoryList();
+}
+
+/* ================= HISTORY ================= */
+function refreshHistoryList() {
+  const listEl = document.getElementById("historyList");
+  if (!listEl || !activeDevice) return;
+
+  const devHistory = getDeviceHistory(activeDevice);
+  const from = document.getElementById("fromDate")?.value;
+  const to = document.getElementById("toDate")?.value;
+
+  const dates = Object.keys(devHistory)
+    .filter(d => (!from || d >= from) && (!to || d <= to))
+    .sort()
+    .reverse();
+
+  if (dates.length === 0) {
+    listEl.innerHTML = "";
+    return;
+  }
+
+  listEl.innerHTML = dates.map(d => `
+    <div class="history-item">
+      <span class="date">${formatDate(d)}</span>
+      <span class="steps-badge">${devHistory[d]} steps</span>
+    </div>
+  `).join("");
+}
+
+/* ================= PDF EXPORT ================= */
+function exportPdf() {
+  if (!activeDevice) return;
+
+  const devHistory = getDeviceHistory(activeDevice);
+  const from = document.getElementById("fromDate")?.value;
+  const to = document.getElementById("toDate")?.value;
+
+  const dates = Object.keys(devHistory)
+    .filter(d => (!from || d >= from) && (!to || d <= to))
+    .sort();
+
+  if (dates.length === 0) {
+    alert("No data in the selected date range");
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.setFontSize(18);
+  doc.setTextColor(0, 179, 0);
+  doc.text("Steps Report", 14, 20);
+
+  doc.setFontSize(11);
+  doc.setTextColor(80, 80, 80);
+  doc.text("Device: " + activeDevice, 14, 30);
+  doc.text("Range: " + (from ? formatDate(from) : "Beginning") + " to " + (to ? formatDate(to) : "Today"), 14, 37);
+  doc.text("Generated: " + new Date().toLocaleString(), 14, 44);
+
+  let y = 58;
+  doc.setFillColor(0, 179, 0);
+  doc.rect(14, y - 7, 180, 10, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(11);
+  doc.text("Date", 20, y);
+  doc.text("Steps", 160, y);
+
+  doc.setTextColor(40, 40, 40);
+  y += 8;
+  let totalSteps = 0;
+
+  dates.forEach((date, idx) => {
+    if (y > 270) { doc.addPage(); y = 20; }
+    if (idx % 2 === 0) {
+      doc.setFillColor(245, 245, 250);
+      doc.rect(14, y - 5, 180, 8, "F");
+    }
+    doc.text(formatDate(date), 20, y);
+    doc.text(String(devHistory[date]), 160, y);
+    totalSteps += devHistory[date];
+    y += 8;
+  });
+
+  y += 5;
+  doc.setDrawColor(0, 179, 0);
+  doc.line(14, y - 4, 194, y - 4);
+  doc.setFontSize(12);
+  doc.setTextColor(0, 179, 0);
+  doc.text("Total Steps: " + totalSteps, 20, y + 4);
+  doc.text("Days: " + dates.length, 160, y + 4);
+
+  const filename = `steps_${activeDevice}_${from || "all"}_to_${to || "today"}.pdf`;
+  doc.save(filename);
+}
+
+/* ================= SETTINGS ================= */
+function openSettings() {
+  renderDeviceList();
+  if (activeDevice) {
+    const ti = document.getElementById("thresholdInput");
+    if (ti) ti.value = thresholds[activeDevice] ?? 2.0;
+  }
+  // prefill history dates
+  const fromInput = document.getElementById("fromDate");
+  const toInput = document.getElementById("toDate");
+  if (fromInput && !fromInput.value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    fromInput.value = d.toISOString().split("T")[0];
+  }
+  if (toInput && !toInput.value) toInput.value = getTodayStr();
+  refreshHistoryList();
+  document.getElementById("settingsModal").classList.add("show");
+}
+function closeSettings() {
+  document.getElementById("settingsModal").classList.remove("show");
+}
+
+/* ================= INIT ================= */
+window.addEventListener("load", () => {
+  const savedBg = localStorage.getItem(BG_KEY);
+  applyBg(savedBg);
+  initDashboard();
+});
+</script>
+</body>
+</html>
